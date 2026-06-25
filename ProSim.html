@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProSim – Professional Trading Simulator</title>
+    <!-- Tailwind CSS 3.4+ via Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Additional professional trading polish */
+        .trading-table th {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+        .number-mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        .section-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .tab-button {
+            position: relative;
+            transition: color 0.15s ease;
+        }
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: rgb(52 211 153); /* emerald-400 */
+        }
+        .equity-value {
+            font-feature-settings: "tnum";
+        }
+        .trade-row:hover {
+            background-color: rgb(63 63 70 / 0.5);
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200">
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <!-- HEADER -->
+        <header class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
+            <div>
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center">
+                        <span class="text-zinc-950 font-bold text-2xl tracking-tighter">P</span>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-semibold tracking-tight">ProSim</h1>
+                        <p class="text-sm text-zinc-400 -mt-1">Professional Trading Simulator</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Big Equity Display -->
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-8">
+                <div>
+                    <div class="text-xs uppercase tracking-[2px] text-zinc-500 mb-1">Gesamt-Equity</div>
+                    <div id="header-equity" 
+                         class="equity-value text-5xl font-semibold tracking-tighter text-white number-mono">
+                        50.000,00 €
+                    </div>
+                </div>
+                <div id="header-performance"
+                     class="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-zinc-900 border border-zinc-800 text-lg font-medium">
+                    <span id="header-performance-value">+0,00 %</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- CONTROLS -->
+        <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-8">
+            <div class="flex flex-col lg:flex-row gap-6">
+                <!-- Start Capital -->
+                <div class="w-full lg:w-64">
+                    <label class="block text-sm font-medium text-zinc-400 mb-1.5">Startkapital</label>
+                    <div class="relative">
+                        <input id="start-capital" 
+                               type="number" 
+                               value="50000" 
+                               step="1000"
+                               class="w-full bg-zinc-950 border border-zinc-700 focus:border-emerald-500 rounded-2xl px-4 py-3 text-xl font-medium number-mono outline-none">
+                        <span class="absolute right-4 top-3.5 text-zinc-500 text-lg">€</span>
+                    </div>
+                </div>
+
+                <!-- JSON Input -->
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-sm font-medium text-zinc-400">Trades (JSON Array)</label>
+                        <button onclick="loadExampleData()" 
+                                class="text-sm px-3 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-emerald-400 transition-colors font-medium">
+                            Beispiel-Daten laden
+                        </button>
+                    </div>
+                    <textarea id="trades-json" 
+                              class="w-full h-48 bg-zinc-950 border border-zinc-700 focus:border-emerald-500 font-mono text-sm rounded-2xl p-4 resize-y"
+                              placeholder='[{"entry_date": "2024-01-10", "symbol": "AAPL", "entry_price": 178.5, "exit_date": "2024-01-15", "exit_price": 182.3}]'></textarea>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center gap-3 mt-4">
+                <button onclick="runSimulation()"
+                        class="flex-1 sm:flex-none px-8 py-3 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 transition-all text-zinc-950 font-semibold rounded-2xl text-base flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7-7 7M5 12h14" />
+                    </svg>
+                    <span>Simulation starten / Aktualisieren</span>
+                </button>
+
+                <button onclick="resetToDefaults()"
+                        class="px-5 py-3 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-2xl transition-colors font-medium">
+                    Zurücksetzen
+                </button>
+            </div>
+
+            <!-- Error Banner -->
+            <div id="error-banner" class="hidden mt-4 bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-2xl text-sm flex items-start gap-3">
+                <div class="mt-0.5">⚠️</div>
+                <div id="error-message" class="flex-1"></div>
+            </div>
+        </div>
+
+        <!-- SUMMARY CARDS -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="section-card bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                <div class="text-xs text-zinc-500 mb-1">Kasse</div>
+                <div id="card-cash" class="text-3xl font-semibold number-mono tracking-tight">50.000,00 €</div>
+            </div>
+            <div class="section-card bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                <div class="text-xs text-zinc-500 mb-1">Gesamt-Equity</div>
+                <div id="card-equity" class="text-3xl font-semibold number-mono tracking-tight">50.000,00 €</div>
+            </div>
+            <div class="section-card bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                <div class="text-xs text-zinc-500 mb-1">Offene Positionen</div>
+                <div id="card-open" class="text-3xl font-semibold number-mono tracking-tight">0</div>
+                <div id="card-open-symbols" class="text-xs text-emerald-400 mt-1"></div>
+            </div>
+            <div class="section-card bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                <div class="text-xs text-zinc-500 mb-1">Realisiertes P/L</div>
+                <div id="card-realized" class="text-3xl font-semibold number-mono tracking-tight">0,00 €</div>
+                <div class="text-sm mt-0.5">
+                    <span id="card-winrate" class="text-emerald-400">Win Rate: —</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- TABS -->
+        <div class="mb-3 border-b border-zinc-800">
+            <div class="flex gap-2">
+                <button onclick="switchTab('trades')" 
+                        class="tab-button active px-5 py-2.5 text-sm font-medium border-b-2 border-emerald-400 text-white" id="tab-trades">
+                    Trades
+                </button>
+                <button onclick="switchTab('chart')" 
+                        class="tab-button px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-zinc-200" id="tab-chart">
+                    Portfolio-Verlauf
+                </button>
+                <button onclick="switchTab('log')" 
+                        class="tab-button px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-zinc-200" id="tab-log">
+                    Event-Log
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB CONTENTS -->
+        <div id="tab-content-trades" class="tab-content">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden">
+                <!-- Filter -->
+                <div class="px-4 py-3 border-b border-zinc-800 flex items-center gap-3">
+                    <input id="filter-input" 
+                           type="text" 
+                           placeholder="Symbol filtern (z.B. AAPL)" 
+                           oninput="filterTable()"
+                           class="flex-1 bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2 text-sm focus:border-emerald-500 outline-none">
+                    <span id="table-count" class="text-xs text-zinc-500 font-mono">0 Trades</span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full trading-table text-sm">
+                        <thead class="bg-zinc-950/70 text-zinc-400">
+                            <tr>
+                                <th class="text-left px-4 py-3 cursor-pointer" onclick="sortTable('entry_date')">Eintrittsdatum</th>
+                                <th class="text-left px-4 py-3 cursor-pointer" onclick="sortTable('symbol')">Symbol</th>
+                                <th class="text-right px-4 py-3 cursor-pointer" onclick="sortTable('entry_price')">Entry</th>
+                                <th class="text-right px-4 py-3">Exit</th>
+                                <th class="text-center px-3 py-3">Status</th>
+                                <th class="text-right px-4 py-3 cursor-pointer" onclick="sortTable('einsatz')">Einsatz</th>
+                                <th class="text-right px-4 py-3">Kasse danach</th>
+                                <th class="text-center px-3 py-3">Laufend</th>
+                                <th class="text-right px-4 py-3">Running</th>
+                                <th class="text-right px-4 py-3">Finalisiert</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trades-table-body" class="divide-y divide-zinc-800">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-content-chart" class="tab-content hidden">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div class="h-80">
+                    <canvas id="equity-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-content-log" class="tab-content hidden">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 max-h-[420px] overflow-auto">
+                <div id="event-log" class="space-y-1 text-sm font-mono"></div>
+            </div>
+        </div>
+
+        <!-- ACTION BAR -->
+        <div class="flex flex-wrap items-center gap-3 mt-6">
+            <button onclick="exportCSV()" 
+                    class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-2xl text-sm font-medium flex items-center gap-2 transition-colors">
+                <span>CSV exportieren</span>
+            </button>
+            <button onclick="exportJSON()" 
+                    class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-2xl text-sm font-medium flex items-center gap-2 transition-colors">
+                <span>JSON exportieren</span>
+            </button>
+
+            <div class="flex-1"></div>
+
+            <button onclick="showInfoModal()" 
+                    class="text-sm px-4 py-2 text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 transition-colors">
+                <span>Regeln &amp; Simulation erklärt</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- INFO MODAL -->
+    <div id="info-modal" onclick="hideInfoModal()" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div onclick="event.stopImmediatePropagation()" class="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-2xl w-full p-8">
+            <h2 class="text-2xl font-semibold mb-4">Wie funktioniert die Simulation?</h2>
+            
+            <div class="space-y-4 text-sm text-zinc-300 leading-relaxed">
+                <p><strong>Max. 20 parallele Trades</strong><br>
+                ProSim erlaubt maximal 20 gleichzeitig offene Positionen.</p>
+                
+                <p><strong>Dynamische Positionsgröße</strong><br>
+                Bei jedem neuen Trade wird der Einsatz wie folgt berechnet:<br>
+                <code class="bg-zinc-800 px-1.5 py-0.5 rounded">Einsatz = aktuelle Kasse ÷ (20 − laufende Trades)</code></p>
+                
+                <p><strong>Chronologische Verarbeitung</strong><br>
+                Trades werden streng nach Datum verarbeitet. An einem Tag werden <strong>zuerst alle Verkäufe</strong> (Cash-Rückfluss) und <strong>danach alle Käufe</strong> abgewickelt.</p>
+                
+                <p><strong>Kasse &amp; Equity</strong><br>
+                Der Erlös eines geschlossenen Trades fließt sofort in die Kasse zurück und steht für neue Positionen zur Verfügung.</p>
+                
+                <p><strong>Offene Positionen</strong><br>
+                Bei offenen Trades wird der Wert mit dem ursprünglichen Einsatz bewertet (unrealisierte P/L = 0).</p>
+            </div>
+
+            <div class="mt-8 flex justify-end">
+                <button onclick="hideInfoModal()" 
+                        class="px-6 py-2.5 bg-emerald-500 text-zinc-950 font-medium rounded-2xl">Verstanden</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind Play configuration
+        function initTailwind() {
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        fontFamily: {
+                            'mono': ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace']
+                        }
+                    }
+                }
+            };
+        }
+
+        // Global state
+        let currentSimulation = null;
+        let currentSort = { column: 'entry_date', direction: 'asc' };
+        let currentFilter = '';
+        let equityChart = null;
+
+        function formatEUR(amount) {
+            return new Intl.NumberFormat('de-DE', {
+                style: 'currency',
+                currency: 'EUR',
+                minimumFractionDigits: 2
+            }).format(amount);
+        }
+
+        function formatPercent(value) {
+            const sign = value >= 0 ? '+' : '';
+            return sign + new Intl.NumberFormat('de-DE', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value) + ' %';
+        }
+
+        function showError(message) {
+            const banner = document.getElementById('error-banner');
+            const msgEl = document.getElementById('error-message');
+            msgEl.textContent = message;
+            banner.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('error-banner').classList.add('hidden');
+        }
+
+        function loadExampleData() {
+            const example = [
+                { "entry_date": "2023-11-02", "symbol": "AAPL", "entry_price": 178.92, "exit_date": "2023-11-10", "exit_price": 185.40 },
+                { "entry_date": "2023-12-05", "symbol": "TSLA", "entry_price": 245.80, "exit_date": "2023-12-12", "exit_price": 238.15 },
+                { "entry_date": "2024-02-08", "symbol": "NVDA", "entry_price": 68.50, "exit_date": "2024-02-22", "exit_price": 79.80 },
+                { "entry_date": "2024-03-12", "symbol": "MSFT", "entry_price": 412.30, "exit_date": "2024-03-19", "exit_price": 421.75 },
+                { "entry_date": "2024-06-03", "symbol": "AAPL", "entry_price": 192.40, "exit_date": null, "exit_price": null },
+                { "entry_date": "2024-07-15", "symbol": "GOOGL", "entry_price": 175.80, "exit_date": "2024-08-01", "exit_price": 169.25 },
+                { "entry_date": "2024-09-20", "symbol": "NVDA", "entry_price": 118.20, "exit_date": "2024-10-04", "exit_price": 132.50 },
+                { "entry_date": "2025-01-10", "symbol": "EURUSD", "entry_price": 1.0850, "exit_date": null, "exit_price": null }
+            ];
+
+            document.getElementById('trades-json').value = JSON.stringify(example, null, 2);
+            hideError();
+        }
+
+        function resetToDefaults() {
+            document.getElementById('start-capital').value = 50000;
+            document.getElementById('trades-json').value = '';
+            document.getElementById('trades-table-body').innerHTML = '';
+            document.getElementById('event-log').innerHTML = '';
+            hideError();
+
+            // Reset header and cards
+            document.getElementById('header-equity').textContent = formatEUR(50000);
+            document.getElementById('header-performance').innerHTML = '<span>+0,00 %</span>';
+            document.getElementById('header-performance').className = 'inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-zinc-900 border border-zinc-800 text-lg font-medium';
+
+            ['card-cash', 'card-equity', 'card-realized'].forEach(id => {
+                document.getElementById(id).textContent = formatEUR(0);
+            });
+            document.getElementById('card-open').textContent = '0';
+            document.getElementById('card-open-symbols').textContent = '';
+            document.getElementById('card-winrate').textContent = 'Win Rate: —';
+
+            if (equityChart) {
+                equityChart.destroy();
+                equityChart = null;
+            }
+
+            currentSimulation = null;
+        }
+
+        // ==================== SIMULATION ENGINE (Core) ====================
+        function normalizeTrades(rawTrades) {
+            if (!Array.isArray(rawTrades)) {
+                throw new Error("Eingabe muss ein Array von Trades sein.");
+            }
+
+            return rawTrades.map((t, index) => {
+                if (!t.entry_date || !t.symbol || typeof t.entry_price !== 'number') {
+                    throw new Error(`Trade #${index + 1}: entry_date, symbol und entry_price sind erforderlich.`);
+                }
+
+                const trade = {
+                    id: t.id || `t${index + 1}`,
+                    entry_date: t.entry_date,
+                    symbol: String(t.symbol).toUpperCase().trim(),
+                    entry_price: t.entry_price,
+                    exit_date: t.exit_date || null,
+                    exit_price: t.exit_price || null,
+                    direction: t.direction || 'long'
+                };
+
+                if (trade.exit_date && (trade.exit_price === null || typeof trade.exit_price !== 'number')) {
+                    throw new Error(`Trade ${trade.symbol}: exit_date vorhanden, aber kein exit_price.`);
+                }
+
+                return trade;
+            });
+        }
+
+        function buildEvents(trades) {
+            const events = [];
+            trades.forEach(trade => {
+                events.push({
+                    date: trade.entry_date,
+                    type: 'entry',
+                    trade: trade
+                });
+                if (trade.exit_date && trade.exit_price != null) {
+                    events.push({
+                        date: trade.exit_date,
+                        type: 'exit',
+                        trade: trade
+                    });
+                }
+            });
+            return events;
+        }
+
+        function sortEvents(events) {
+            return events.sort((a, b) => {
+                if (a.date !== b.date) {
+                    return a.date.localeCompare(b.date);
+                }
+                // On same day: exits (sells) first, then entries
+                if (a.type === 'exit' && b.type === 'entry') return -1;
+                if (a.type === 'entry' && b.type === 'exit') return 1;
+                return 0;
+            });
+        }
+
+        function sumOpenValues(openPositions) {
+            return openPositions.reduce((sum, pos) => sum + pos.allocated, 0);
+        }
+
+        function simulate(tradesInput, startCapital = 50000) {
+            const trades = normalizeTrades(tradesInput);
+            const events = sortEvents(buildEvents(trades));
+
+            let cash = startCapital;
+            const openPositions = [];           // {trade, allocated, entryPrice, symbol}
+            const processedMap = new Map();     // id -> enriched trade record
+            const equityCurve = [{ date: 'start', equity: startCapital }];
+
+            // Pre-populate processed entries
+            trades.forEach(trade => {
+                processedMap.set(trade.id, {
+                    ...trade,
+                    status: trade.exit_date && trade.exit_price ? 'geschlossen' : 'offen',
+                    einsatz: 0,
+                    kasse_nach: 0,
+                    running_trades: 0,
+                    running_pl: 0,
+                    running_wert: 0,
+                    finalized_pl: 0,
+                    finalized_wert: 0
+                });
+            });
+
+            for (const event of events) {
+                const tradeId = event.trade.id;
+                const proc = processedMap.get(tradeId);
+
+                if (event.type === 'exit') {
+                    const posIndex = openPositions.findIndex(p => p.trade.id === tradeId);
+                    if (posIndex === -1) continue;
+
+                    const pos = openPositions[posIndex];
+                    const multiplier = event.trade.exit_price / pos.entryPrice;
+                    const finalValue = pos.allocated * multiplier;
+                    const pl = finalValue - pos.allocated;
+
+                    cash += finalValue;
+                    openPositions.splice(posIndex, 1);
+
+                    // Update processed record
+                    proc.finalized_pl = pl;
+                    proc.finalized_wert = finalValue;
+                    proc.status = 'geschlossen';
+                    proc.kasse_nach = cash;
+                    proc.running_trades = openPositions.length;
+
+                    equityCurve.push({
+                        date: event.date,
+                        equity: cash + sumOpenValues(openPositions)
+                    });
+                }
+
+                if (event.type === 'entry') {
+                    const currentOpen = openPositions.length;
+
+                    let allocated = 0;
+                    let skipped = false;
+
+                    if (currentOpen >= 20) {
+                        skipped = true;
+                    } else {
+                        allocated = cash / (20 - currentOpen);
+                        cash -= allocated;
+
+                        openPositions.push({
+                            trade: event.trade,
+                            allocated,
+                            entryPrice: event.trade.entry_price,
+                            symbol: event.trade.symbol
+                        });
+                    }
+
+                    // Update processed record
+                    proc.einsatz = allocated;
+                    proc.kasse_nach = cash;
+                    proc.running_trades = openPositions.length;
+                    proc.running_wert = allocated;
+                    proc.running_pl = 0;
+
+                    equityCurve.push({
+                        date: event.date,
+                        equity: cash + sumOpenValues(openPositions)
+                    });
+                }
+            }
+
+            // Finalize any remaining open positions
+            openPositions.forEach(pos => {
+                const proc = processedMap.get(pos.trade.id);
+                proc.running_wert = pos.allocated;
+                proc.running_pl = 0;
+            });
+
+            // Build results
+            const processedTrades = Array.from(processedMap.values());
+
+            // Calculate stats
+            let realizedPL = 0;
+            let closedCount = 0;
+            let wins = 0;
+
+            processedTrades.forEach(t => {
+                if (t.status === 'geschlossen') {
+                    realizedPL += t.finalized_pl;
+                    closedCount++;
+                    if (t.finalized_pl > 0) wins++;
+                }
+            });
+
+            const winRate = closedCount > 0 ? (wins / closedCount) * 100 : 0;
+            const openValue = sumOpenValues(openPositions);
+            const totalEquity = cash + openValue;
+
+            const stats = {
+                finalCash: cash,
+                totalEquity: totalEquity,
+                realizedPL: realizedPL,
+                winRate: winRate,
+                openPositions: openPositions.length,
+                closedTrades: closedCount,
+                totalTrades: processedTrades.length
+            };
+
+            return {
+                processedTrades,
+                equityCurve,
+                stats,
+                finalCash: cash,
+                startCapital
+            };
+        }
+
+        function runSimulation() {
+            hideError();
+
+            const startCapital = parseFloat(document.getElementById('start-capital').value) || 50000;
+            const jsonText = document.getElementById('trades-json').value.trim();
+
+            if (!jsonText) {
+                showError('Bitte JSON-Daten in das Textfeld einfügen oder die Beispieldaten laden.');
+                return;
+            }
+
+            let parsed;
+            try {
+                parsed = JSON.parse(jsonText);
+                if (!Array.isArray(parsed)) {
+                    throw new Error('Die JSON-Daten müssen ein Array sein.');
+                }
+            } catch (e) {
+                showError('Ungültiges JSON: ' + e.message);
+                return;
+            }
+
+            try {
+                const result = simulate(parsed, startCapital);
+                currentSimulation = result;
+
+                // Update all UI
+                updateHeader(result);
+                updateSummaryCards(result);
+                renderTradesTable(result.processedTrades);
+                renderEventLog(result);
+
+                // Re-render chart if on that tab
+                if (!document.getElementById('tab-content-chart').classList.contains('hidden')) {
+                    renderChart(result);
+                }
+
+                switchTab('trades');
+
+            } catch (e) {
+                showError('Fehler bei der Simulation: ' + e.message);
+                console.error(e);
+            }
+        }
+
+        function updateHeader(result) {
+            const equity = result.stats.totalEquity;
+            const startCapital = result.startCapital;
+            const pl = equity - startCapital;
+            const perf = startCapital > 0 ? (pl / startCapital) * 100 : 0;
+
+            document.getElementById('header-equity').textContent = formatEUR(equity);
+
+            const perfEl = document.getElementById('header-performance');
+            perfEl.innerHTML = `<span id="header-performance-value">${formatPercent(perf)}</span>`;
+
+            if (pl >= 0) {
+                perfEl.className = 'inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-lg font-medium';
+            } else {
+                perfEl.className = 'inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 text-lg font-medium';
+            }
+        }
+
+        function updateSummaryCards(result) {
+            const s = result.stats;
+
+            document.getElementById('card-cash').textContent = formatEUR(s.finalCash);
+            document.getElementById('card-equity').textContent = formatEUR(s.totalEquity);
+
+            const openEl = document.getElementById('card-open');
+            openEl.textContent = s.openPositions;
+
+            // Show open symbols
+            const openSymbols = result.processedTrades
+                .filter(t => t.status === 'offen')
+                .map(t => t.symbol)
+                .join(', ');
+            document.getElementById('card-open-symbols').textContent = openSymbols ? openSymbols : '';
+
+            const realizedEl = document.getElementById('card-realized');
+            realizedEl.textContent = formatEUR(s.realizedPL);
+            realizedEl.className = `text-3xl font-semibold number-mono tracking-tight ${s.realizedPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
+
+            const winrateEl = document.getElementById('card-winrate');
+            winrateEl.textContent = `Win Rate: ${s.closedTrades > 0 ? s.winRate.toFixed(0) + '%' : '—'}`;
+        }
+
+        function switchTab(tab) {
+            // Hide all
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            // Deactivate buttons
+            document.querySelectorAll('[id^="tab-"]').forEach(el => {
+                el.classList.remove('active', 'text-white', 'border-b-2', 'border-emerald-400');
+                el.classList.add('text-zinc-400');
+            });
+
+            // Show selected
+            document.getElementById(`tab-content-${tab}`).classList.remove('hidden');
+
+            const btn = document.getElementById(`tab-${tab}`);
+            btn.classList.add('active', 'text-white', 'border-b-2', 'border-emerald-400');
+            btn.classList.remove('text-zinc-400');
+
+            // Render chart if needed
+            if (tab === 'chart' && currentSimulation) {
+                setTimeout(() => renderChart(currentSimulation), 50);
+            }
+        }
+
+        function filterTable() {
+            // Placeholder – full implementation in later phase
+            console.log('Filter will be implemented in Phase 4');
+        }
+
+        function sortTable(column) {
+            if (!currentSimulation) return;
+
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            const sorted = [...currentSimulation.processedTrades].sort((a, b) => {
+                let valA = a[column] ?? a[`${column}_date`] ?? 0;
+                let valB = b[column] ?? b[`${column}_date`] ?? 0;
+
+                if (column.includes('date')) {
+                    valA = a.entry_date || '';
+                    valB = b.entry_date || '';
+                }
+                if (typeof valA === 'string') {
+                    return currentSort.direction === 'asc' 
+                        ? valA.localeCompare(valB) 
+                        : valB.localeCompare(valA);
+                }
+                return currentSort.direction === 'asc' ? valA - valB : valB - valA;
+            });
+
+            renderTradesTable(sorted);
+        }
+
+        function filterTable() {
+            if (!currentSimulation) return;
+            const term = document.getElementById('filter-input').value.toUpperCase().trim();
+            currentFilter = term;
+
+            const filtered = currentSimulation.processedTrades.filter(t =>
+                t.symbol.includes(term)
+            );
+            renderTradesTable(filtered);
+        }
+
+        function renderTradesTable(tradesToShow) {
+            const tbody = document.getElementById('trades-table-body');
+            tbody.innerHTML = '';
+
+            if (!tradesToShow || tradesToShow.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" class="px-4 py-6 text-center text-zinc-500">Keine Trades gefunden.</td></tr>`;
+                document.getElementById('table-count').textContent = '0 Trades';
+                return;
+            }
+
+            tradesToShow.forEach(trade => {
+                const row = document.createElement('tr');
+                row.className = 'trade-row border-b border-zinc-800';
+
+                const isOpen = trade.status === 'offen';
+                const statusHtml = isOpen 
+                    ? `<span class="inline-block px-2.5 py-0.5 rounded-full text-xs bg-amber-500/10 text-amber-400">OFFEN</span>`
+                    : `<span class="inline-block px-2.5 py-0.5 rounded-full text-xs bg-emerald-500/10 text-emerald-400">GESCHLOSSEN</span>`;
+
+                const runningPLClass = trade.running_pl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const finalPLClass = trade.finalized_pl >= 0 ? 'text-emerald-400' : 'text-red-400';
+
+                row.innerHTML = `
+                    <td class="px-4 py-3 font-mono text-xs text-zinc-400">${trade.entry_date}</td>
+                    <td class="px-4 py-3 font-semibold">${trade.symbol}</td>
+                    <td class="px-4 py-3 text-right number-mono">${trade.entry_price.toFixed(2)}</td>
+                    <td class="px-4 py-3 text-right number-mono text-zinc-400">${isOpen ? '—' : trade.exit_price.toFixed(2)}</td>
+                    <td class="px-3 py-3 text-center">${statusHtml}</td>
+                    <td class="px-4 py-3 text-right number-mono font-medium">${formatEUR(trade.einsatz)}</td>
+                    <td class="px-4 py-3 text-right number-mono text-zinc-400">${formatEUR(trade.kasse_nach)}</td>
+                    <td class="px-3 py-3 text-center font-mono text-xs">${trade.running_trades}</td>
+                    <td class="px-4 py-3 text-right">
+                        <div class="${runningPLClass} number-mono">${formatEUR(trade.running_pl)}</div>
+                        <div class="text-xs text-zinc-500">${formatEUR(trade.running_wert)}</div>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        ${isOpen ? 
+                            `<div class="text-zinc-500">—</div>` : 
+                            `<div class="${finalPLClass} number-mono">${formatEUR(trade.finalized_pl)}</div>
+                             <div class="text-xs text-zinc-500">${formatEUR(trade.finalized_wert)}</div>`
+                        }
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            document.getElementById('table-count').textContent = `${tradesToShow.length} Trades`;
+        }
+
+        function renderChart(result) {
+            const canvas = document.getElementById('equity-chart');
+            if (!canvas || !result) return;
+
+            if (equityChart) {
+                equityChart.destroy();
+            }
+
+            const labels = result.equityCurve.map(e => e.date === 'start' ? 'Start' : e.date);
+            const data = result.equityCurve.map(e => e.equity);
+
+            equityChart = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Equity',
+                        data: data,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        borderWidth: 2.5,
+                        tension: 0.25,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => formatEUR(ctx.raw)
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { color: '#27272a' }, ticks: { color: '#52525b' } },
+                        y: {
+                            grid: { color: '#27272a' },
+                            ticks: { color: '#52525b', callback: (val) => formatEUR(val) }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderEventLog(result) {
+            const logContainer = document.getElementById('event-log');
+            logContainer.innerHTML = '';
+
+            if (!result || !result.processedTrades.length) {
+                logContainer.innerHTML = '<div class="text-zinc-500 text-center py-4">Keine Events.</div>';
+                return;
+            }
+
+            // Build simple event log from processed trades
+            const events = [];
+
+            result.processedTrades.forEach(t => {
+                events.push({
+                    date: t.entry_date,
+                    text: `BUY ${t.symbol} @ ${t.entry_price} — Einsatz ${formatEUR(t.einsatz)}`
+                });
+                if (t.status === 'geschlossen') {
+                    events.push({
+                        date: t.exit_date,
+                        text: `SELL ${t.symbol} @ ${t.exit_price} — Final ${formatEUR(t.finalized_wert)} (${formatEUR(t.finalized_pl)})`
+                    });
+                }
+            });
+
+            // Sort by date
+            events.sort((a, b) => a.date.localeCompare(b.date));
+
+            events.forEach(ev => {
+                const div = document.createElement('div');
+                div.className = 'px-3 py-1.5 rounded-xl hover:bg-zinc-800 text-xs flex gap-3';
+                div.innerHTML = `
+                    <span class="text-zinc-500 w-24 flex-shrink-0 font-mono">${ev.date}</span>
+                    <span class="flex-1 text-zinc-300">${ev.text}</span>
+                `;
+                logContainer.appendChild(div);
+            });
+        }
+
+        function exportCSV() {
+            if (!currentSimulation) {
+                alert('Bitte zuerst eine Simulation starten.');
+                return;
+            }
+
+            const rows = [['Datum', 'Symbol', 'Entry', 'Exit', 'Status', 'Einsatz', 'Kasse danach', 'Laufende', 'Running P/L', 'Final P/L']];
+
+            currentSimulation.processedTrades.forEach(t => {
+                rows.push([
+                    t.entry_date,
+                    t.symbol,
+                    t.entry_price,
+                    t.exit_price || '',
+                    t.status,
+                    t.einsatz,
+                    t.kasse_nach,
+                    t.running_trades,
+                    t.running_pl,
+                    t.finalized_pl || ''
+                ]);
+            });
+
+            const csvContent = rows.map(r => r.join(';')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'prosim_trades.csv';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function exportJSON() {
+            if (!currentSimulation) {
+                alert('Bitte zuerst eine Simulation starten.');
+                return;
+            }
+
+            const dataStr = JSON.stringify(currentSimulation, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'prosim_simulation.json';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function showInfoModal() {
+            document.getElementById('info-modal').classList.remove('hidden');
+            document.getElementById('info-modal').classList.add('flex');
+        }
+
+        function hideInfoModal() {
+            const modal = document.getElementById('info-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        // Initialize
+        function init() {
+            initTailwind();
+
+            // Load example data by default for convenience
+            loadExampleData();
+
+            // Initial header state
+            document.getElementById('header-equity').textContent = formatEUR(50000);
+
+            // Keyboard support for textarea (Ctrl/Cmd + Enter to run)
+            const textarea = document.getElementById('trades-json');
+            textarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    runSimulation();
+                }
+            });
+
+            // Automatically run simulation with loaded example data
+            setTimeout(() => {
+                runSimulation();
+            }, 450);
+
+            console.log('%c[ProSim] Phase 3+ ready — engine + UI wired.', 'color:#10b981');
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

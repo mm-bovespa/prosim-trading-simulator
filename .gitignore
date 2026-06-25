@@ -1,0 +1,15 @@
+# Agent / Grok stuff
+.grok/
+
+# Old project files (previous experiments)
+todo.py
+todo.ps1
+tests/
+Agents.MD
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
